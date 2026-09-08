@@ -1,0 +1,36 @@
+{
+  "name": "nexus",
+  "version": "0.1.0",
+  "description": "NEXUS Phase 0 — multi-agent campaign orchestration scaffold",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "nexus": "./src/cli/index.ts"
+  },
+  "scripts": {
+    "migrate": "tsx src/db/migrate.ts",
+    "migrate:down": "tsx src/db/migrate.ts down",
+    "seed": "tsx src/seed/seed.ts",
+    "cli": "tsx src/cli/index.ts",
+    "nexus": "tsx src/cli/index.ts",
+    "test": "tsx --test tests/**/*.test.ts",
+    "smoke": "bash scripts/smoke.sh",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/pg": "^8.11.10",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}
