@@ -11,6 +11,7 @@ describe("nexus phase0 scaffold", () => {
   it("has migration SQL", () => {
     const mig = path.join(root, "migrations", "001_phase0_schema.sql");
     assert.ok(fs.existsSync(mig));
+    assert.ok(fs.existsSync(path.join(root, "migrations", "002_phase1_router.sql")));
     const sql = fs.readFileSync(mig, "utf8");
     for (const table of [
       "workspaces", "model_policies", "agents", "markets", "market_twins",
@@ -23,6 +24,9 @@ describe("nexus phase0 scaffold", () => {
     assert.match(sql, /epistemic_class/);
     assert.match(sql, /evidence_class/);
     assert.match(sql, /decay_halflife_days/);
+    const mig2 = fs.readFileSync(path.join(root, "migrations", "002_phase1_router.sql"), "utf8");
+    assert.match(mig2, /CREATE TABLE model_invocations/);
+    assert.match(mig2, /CREATE TABLE agent_handoffs/);
   });
 
   it("has package scripts", () => {

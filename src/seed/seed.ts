@@ -17,14 +17,32 @@ async function seed() {
     const wsId = Object.fromEntries(ws.rows.map((r) => [r.slug, r.id]));
     console.log("workspaces:", ws.rows.map((r) => r.slug).join(", "));
 
+    const managersPolicy = {
+      tier: "managers",
+      prefer: "astra6",
+      notes: "director-grade",
+      escalation_ladder: ["astra"],
+      confidence_threshold: 0.9,
+      start_at: "astra",
+      skip_cheap: true,
+    };
+    const cheapPolicy = {
+      tier: "economy",
+      prefer: "cheap",
+      notes: "cost-first routing",
+      escalation_ladder: ["qwen-local", "glm", "specialist", "astra"],
+      confidence_threshold: 0.9,
+      start_at: "qwen-local",
+      skip_cheap: false,
+    };
     await client.query(
       `INSERT INTO model_policies (workspace_id, slug, name, policy, is_default) VALUES
-         ($1, 'managers-astra6', 'Managers Astra6', '{"tier":"managers","prefer":"astra6","notes":"director-grade"}'::jsonb, true),
-         ($1, 'cheap-first',     'Cheap First',     '{"tier":"economy","prefer":"cheap","notes":"cost-first routing"}'::jsonb, false),
-         ($2, 'managers-astra6', 'Managers Astra6', '{"tier":"managers","prefer":"astra6"}'::jsonb, true),
-         ($2, 'cheap-first',     'Cheap First',     '{"tier":"economy","prefer":"cheap"}'::jsonb, false)
-       ON CONFLICT (workspace_id, slug) DO UPDATE SET policy = EXCLUDED.policy`,
-      [wsId.core, wsId.frh]
+         ($1, 'managers-astra6', 'Managers Astra6', $3::jsonb, true),
+         ($1, 'cheap-first',     'Cheap First',     $4::jsonb, false),
+         ($2, 'managers-astra6', 'Managers Astra6', $3::jsonb, true),
+         ($2, 'cheap-first',     'Cheap First',     $4::jsonb, false)
+       ON CONFLICT (workspace_id, slug) DO UPDATE SET policy = EXCLUDED.policy, updated_at = now()`,
+      [wsId.core, wsId.frh, JSON.stringify(managersPolicy), JSON.stringify(cheapPolicy)]
     );
     console.log("policies: managers-astra6, cheap-first");
 
@@ -65,13 +83,21 @@ async function seed() {
       ["creative-qa", "FRH Creative QA", "frh-grok:creative-qa", true],
     ];
 
+    const frhCheap = (
+      await client.query(
+        `SELECT id FROM model_policies WHERE workspace_id = $1 AND slug = 'cheap-first'`,
+        [wsId.frh]
+      )
+    ).rows[0].id;
+
     for (const [slug, name, seedSource, dual] of dualRun) {
       await client.query(
         `INSERT INTO agents (workspace_id, slug, name, role, kind, seed_source, dual_run, policy_id)
          VALUES ($1, $2, $3, 'specialist', 'specialist', $4, $5, $6)
          ON CONFLICT (workspace_id, slug) DO UPDATE
-           SET seed_source = EXCLUDED.seed_source, dual_run = EXCLUDED.dual_run`,
-        [wsId.frh, slug, name, seedSource, dual, frhMgr]
+           SET seed_source = EXCLUDED.seed_source, dual_run = EXCLUDED.dual_run,
+               policy_id = EXCLUDED.policy_id`,
+        [wsId.frh, slug, name, seedSource, dual, frhCheap]
       );
     }
     console.log("agents: directors + dual_run specialists");

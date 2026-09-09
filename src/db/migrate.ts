@@ -73,12 +73,14 @@ async function migrateDown() {
       return;
     }
     const id = applied.rows[0].id;
-    // Phase 0: down drops all app tables (re-run migrate for clean slate)
+    // Down drops all app tables including Phase 1 (re-run migrate for clean slate)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       await client.query(`
         DROP TABLE IF EXISTS
+          agent_handoffs,
+          model_invocations,
           insights,
           frh_profiles,
           council_cases,

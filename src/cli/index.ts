@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import dotenv from "dotenv";
+import fs from "node:fs";
 import { createPool } from "../db/client.js";
+import { explainAgentRoute, invokeAgent } from "../router/invoke.js";
+import { validateHandoff, requiredKeysList } from "../router/handoff.js";
+import { getModelMode } from "../router/providers.js";
 
 dotenv.config();
 
@@ -9,8 +13,8 @@ const program = new Command();
 
 program
   .name("nexus")
-  .description("NEXUS Phase 0 CLI - dry-run by default (no spend)")
-  .version("0.1.0");
+  .description("NEXUS Phase 0+1 CLI - dry-run + model router (stub by default)")
+  .version("0.2.0");
 
 const campaign = program.command("campaign").description("Campaign commands");
 
@@ -128,6 +132,135 @@ program
     console.log("");
     console.log("  Example:");
     console.log('    pnpm nexus campaign create --workspace frh --slug demo-gf --title "Demo GF"');
+  });
+
+
+const routerCmd = program.command("router").description("Model router commands");
+
+routerCmd
+  .command("explain")
+  .description("Print ladder decision for an agent (no invoke)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--agent <slug>", "Agent slug")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const result = await explainAgentRoute(pool, opts.workspace, opts.agent);
+      console.log(result.explanation);
+      console.log("");
+      console.log(
+        JSON.stringify(
+          {
+            policy: result.policySlug,
+            startAt: result.startAt,
+            skipCheap: result.skipCheap,
+            ladder: result.ladder,
+            mode: getModelMode(),
+          },
+          null,
+          2
+        )
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+const agentCmd = program.command("agent").description("Agent invoke commands");
+
+agentCmd
+  .command("invoke")
+  .description("Invoke agent via model router (stub by default)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--slug <slug>", "Agent slug")
+  .requiredOption("--prompt <text>", "Prompt text")
+  .option("--campaign <slug>", "Optional campaign slug for context")
+  .option("--max-escalations <n>", "Max ladder steps", (v) => parseInt(v, 10))
+  .action(async (opts) => {
+    console.log(`NEXUS_MODEL_MODE=${getModelMode()} (stub never calls external APIs)`);
+    const pool = createPool();
+    try {
+      const result = await invokeAgent(pool, {
+        workspaceSlug: opts.workspace,
+        agentSlug: opts.slug,
+        prompt: opts.prompt,
+        campaignSlug: opts.campaign,
+        maxEscalations: opts.maxEscalations,
+      });
+      console.log(
+        JSON.stringify(
+          {
+            ok: result.ok,
+            resolved_model: result.resolvedModel,
+            requested_model: result.requestedModel,
+            provider: result.provider,
+            ladder_step: result.ladderStep,
+            confidence: result.confidence,
+            council_recommended: result.councilRecommended,
+            escalation_path: result.escalationPath,
+            invocation_ids: result.invocationIds,
+            latency_ms: result.latencyMs,
+            cost_usd: result.costUsd,
+            context: result.contextSummary,
+            error: result.error ?? null,
+            text: result.text,
+          },
+          null,
+          2
+        )
+      );
+      if (!result.ok) process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
+  });
+
+const handoffCmd = program.command("handoff").description("Handoff validation");
+
+handoffCmd
+  .command("validate")
+  .description("Validate structured handoff JSON")
+  .option("--file <path>", "Read JSON from file (- for stdin)")
+  .option("--json <json>", "Inline JSON string")
+  .action(async (opts) => {
+    let raw: string;
+    if (opts.json) {
+      raw = opts.json;
+    } else if (opts.file) {
+      if (opts.file === "-") {
+        raw = fs.readFileSync(0, "utf8");
+      } else {
+        raw = fs.readFileSync(opts.file, "utf8");
+      }
+    } else {
+      console.error("Provide --json or --file (- for stdin)");
+      console.error("Required keys: " + requiredKeysList().join(", "));
+      process.exit(1);
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      console.error("invalid JSON");
+      process.exit(1);
+      return;
+    }
+    const result = validateHandoff(parsed);
+    console.log(
+      JSON.stringify(
+        {
+          valid: result.valid,
+          missing: result.missing,
+          errors: result.errors,
+          required: requiredKeysList(),
+          normalized: result.normalized ?? null,
+        },
+        null,
+        2
+      )
+    );
+    if (!result.valid) process.exitCode = 1;
   });
 
 program.parseAsync(process.argv).catch((e) => {
