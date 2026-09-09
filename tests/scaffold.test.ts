@@ -12,6 +12,7 @@ describe("nexus phase0 scaffold", () => {
     const mig = path.join(root, "migrations", "001_phase0_schema.sql");
     assert.ok(fs.existsSync(mig));
     assert.ok(fs.existsSync(path.join(root, "migrations", "002_phase1_router.sql")));
+    assert.ok(fs.existsSync(path.join(root, "migrations", "003_phase1_campaign_loop.sql")));
     const sql = fs.readFileSync(mig, "utf8");
     for (const table of [
       "workspaces", "model_policies", "agents", "markets", "market_twins",
@@ -27,6 +28,10 @@ describe("nexus phase0 scaffold", () => {
     const mig2 = fs.readFileSync(path.join(root, "migrations", "002_phase1_router.sql"), "utf8");
     assert.match(mig2, /CREATE TABLE model_invocations/);
     assert.match(mig2, /CREATE TABLE agent_handoffs/);
+    const mig3 = fs.readFileSync(path.join(root, "migrations", "003_phase1_campaign_loop.sql"), "utf8");
+    assert.match(mig3, /CREATE TABLE IF NOT EXISTS campaign_status_history/);
+    assert.match(mig3, /CREATE TABLE IF NOT EXISTS council_positions/);
+    assert.match(mig3, /CREATE TABLE IF NOT EXISTS creative_gate_actions/);
   });
 
   it("has package scripts", () => {

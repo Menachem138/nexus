@@ -79,6 +79,9 @@ async function migrateDown() {
       await client.query("BEGIN");
       await client.query(`
         DROP TABLE IF EXISTS
+          creative_gate_actions,
+          council_positions,
+          campaign_status_history,
           agent_handoffs,
           model_invocations,
           insights,

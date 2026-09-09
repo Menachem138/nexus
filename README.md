@@ -1,4 +1,4 @@
-# NEXUS Phase 0+1
+# NEXUS Phase 0+1 (Week 2: Campaign loop)
 
 **English** | [Hebrew](#hebrew)
 
@@ -6,6 +6,7 @@ Multi-agent campaign orchestration scaffold.
 
 - **Phase 0**: schema + seed + dry-run CLI — **brief -> blackboard -> human gate**, with **no spend**.
 - **Phase 1 (Week 1)**: Model Router (Cheap First ladder) + agent invoke + handoff validator + Context Engine v0.
+- **Phase 1 (Week 2)**: Campaign status state machine + tasks + council cases + creative human gate.
 
 Cloud Agents / Cursor Pro are **not required**.
 
@@ -87,6 +88,34 @@ echo '{"finding":"..."}' | npm run nexus -- handoff validate --file -
 
 When `--campaign` is set, invoke loads campaign.brief + last-N `blackboard_entries` and compresses them into prompt context.
 
+
+## Phase 1 Week 2 — Campaign loop
+
+Status machine (enforced in code + `campaign_status_history`):
+
+`draft` → `research` → `strategy` → `creative` → `review` → `approved` → `live` → `learned`
+
+Also: `live` ↔ `paused`; kill from most states → `killed`. Keep `NEXUS_ALLOW_SPEND=false` (no live Meta).
+
+### CLI examples (Week 2)
+
+```bash
+npm run nexus -- campaign transition --workspace frh --slug demo-gf --to research --reason "start loop"
+npm run nexus -- campaign status --workspace frh --slug demo-gf
+
+npm run nexus -- task assign --workspace frh --campaign demo-gf --agent strategy --title "Diagnose CPL"
+npm run nexus -- task list --workspace frh --campaign demo-gf
+
+npm run nexus -- council open --workspace frh --campaign demo-gf --topic "CPL spike" --slug cpl-spike-1
+npm run nexus -- council position --workspace frh --case cpl-spike-1 --agent performance --stance "fatigue" --body '{"note":"creative fatigue"}'
+npm run nexus -- council decide --workspace frh --case cpl-spike-1 --verdict '{"cause":"fatigue","confidence":0.78}'
+
+npm run nexus -- creative approve --workspace frh --slug <creative>
+npm run nexus -- creative kill --workspace frh --slug GF-tomber-typo-poster-v1 --reason "sterile stock"
+```
+
+Tables added in `migrations/003_phase1_campaign_loop.sql`: `campaign_status_history`, `council_positions`, `creative_gate_actions` (+ campaigns.status check).
+
 ## Smoke / tests
 
 ```bash
@@ -105,16 +134,16 @@ Market code **GP** = Guadeloupe (not Grand Public).
 ## What is included
 
 - Schema: workspaces, agents, markets, blackboards, campaigns, tasks, events, audit, creatives, insights
-- Phase 1 tables: `model_invocations`, `agent_handoffs`
+- Phase 1 tables: `model_invocations`, `agent_handoffs`, `campaign_status_history`, `council_positions`, `creative_gate_actions`
 - Seed: core+frh workspaces, directors (managers-astra6), dual-run specialists (cheap-first), markets GP/MQ/GF/RE/CORSE
-- CLI: campaign create/list, dry-run, router explain, agent invoke, handoff validate
+- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate
 
 ---
 
 <a id="hebrew"></a>
 ## עברית / Hebrew
 
-**NEXUS פאזה 0+1** — scaffold + model router. dry-run: brief -> blackboard -> human gate, no spend.
+**NEXUS פאזה 0+1** — scaffold + model router + campaign loop. dry-run: brief -> blackboard -> human gate, no spend.
 Router stub by default (`NEXUS_MODEL_MODE=stub`). Cloud Agents / Cursor Pro not required.
 
 ### Setup
@@ -132,6 +161,15 @@ npm run seed
 ```bash
 npm run nexus -- router explain --workspace frh --agent global-cmo
 npm run nexus -- agent invoke --workspace frh --slug strategy --prompt "test"
+```
+
+
+### Phase 1 Week 2 demo
+
+```bash
+npm run nexus -- campaign transition --workspace frh --slug demo-gf --to research --reason "start loop"
+npm run nexus -- campaign status --workspace frh --slug demo-gf
+npm run nexus -- council open --workspace frh --campaign demo-gf --topic "CPL spike" --slug cpl-spike-1
 ```
 
 Keep `NEXUS_ALLOW_SPEND=false`. Do not push `.env`. GP = Guadeloupe.

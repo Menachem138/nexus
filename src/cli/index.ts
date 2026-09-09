@@ -6,6 +6,18 @@ import { createPool } from "../db/client.js";
 import { explainAgentRoute, invokeAgent } from "../router/invoke.js";
 import { validateHandoff, requiredKeysList } from "../router/handoff.js";
 import { getModelMode } from "../router/providers.js";
+import {
+  transitionCampaign,
+  getCampaignStatus,
+  assignTask,
+  listTasks,
+  completeTask,
+  openCase,
+  addPosition,
+  decideCase,
+  approveCreative,
+  killCreative,
+} from "../campaign/index.js";
 
 dotenv.config();
 
@@ -13,8 +25,8 @@ const program = new Command();
 
 program
   .name("nexus")
-  .description("NEXUS Phase 0+1 CLI - dry-run + model router (stub by default)")
-  .version("0.2.0");
+  .description("NEXUS Phase 0+1 CLI - dry-run + model router + campaign loop")
+  .version("0.3.0");
 
 const campaign = program.command("campaign").description("Campaign commands");
 
@@ -32,8 +44,12 @@ campaign
       console.log("dry-run gate: NEXUS_ALLOW_SPEND=false (no spend)");
     }
     let brief = {};
-    try { brief = JSON.parse(opts.brief); }
-    catch { console.error("--brief must be valid JSON"); process.exit(1); }
+    try {
+      brief = JSON.parse(opts.brief);
+    } catch {
+      console.error("--brief must be valid JSON");
+      process.exit(1);
+    }
 
     const pool = createPool();
     const client = await pool.connect();
@@ -68,27 +84,50 @@ campaign
       await client.query(
         `INSERT INTO audit_log (workspace_id, actor, action, entity_type, entity_id, details)
          VALUES ($1, 'cli', 'campaign.create', 'campaign', $2, $3::jsonb)`,
-        [workspaceId, campaignId, JSON.stringify({
-          slug: opts.slug, title: opts.title, blackboard_id: blackboardId,
-          path: "brief->blackboard->human_gate", spend: false
-        })]
+        [
+          workspaceId,
+          campaignId,
+          JSON.stringify({
+            slug: opts.slug,
+            title: opts.title,
+            blackboard_id: blackboardId,
+            path: "brief->blackboard->human_gate",
+            spend: false,
+          }),
+        ]
       );
 
       await client.query(
         `INSERT INTO events (workspace_id, campaign_id, event_type, actor, payload)
          VALUES ($1, $2, 'campaign.created', 'cli', $3::jsonb)`,
-        [workspaceId, campaignId, JSON.stringify({
-          slug: opts.slug, human_gate: "pending", blackboard_id: blackboardId
-        })]
+        [
+          workspaceId,
+          campaignId,
+          JSON.stringify({
+            slug: opts.slug,
+            human_gate: "pending",
+            blackboard_id: blackboardId,
+          }),
+        ]
       );
 
       await client.query("COMMIT");
       console.log("campaign created (dry-run path: brief -> blackboard -> human gate)");
-      console.log(JSON.stringify({
-        campaign_id: campaignId, slug: opts.slug, title: opts.title,
-        workspace: opts.workspace, blackboard_id: blackboardId,
-        human_gate: "pending", spend: false
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            campaign_id: campaignId,
+            slug: opts.slug,
+            title: opts.title,
+            workspace: opts.workspace,
+            blackboard_id: blackboardId,
+            human_gate: "pending",
+            spend: false,
+          },
+          null,
+          2
+        )
+      );
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -118,6 +157,292 @@ campaign
       await pool.end();
     }
   });
+
+campaign
+  .command("transition")
+  .description("Transition campaign status (state machine)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--slug <slug>", "Campaign slug")
+  .requiredOption("--to <status>", "Target status")
+  .option("--reason <text>", "Reason for transition")
+  .option("--actor <name>", "Actor", "cli")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const result = await transitionCampaign(pool, {
+        workspace: opts.workspace,
+        slug: opts.slug,
+        to: opts.to,
+        reason: opts.reason,
+        actor: opts.actor,
+      });
+      console.log(
+        JSON.stringify(
+          {
+            ok: true,
+            campaign_id: result.campaignId,
+            slug: result.slug,
+            from: result.from,
+            to: result.to,
+            history_id: result.historyId,
+          },
+          null,
+          2
+        )
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+campaign
+  .command("status")
+  .description("Show campaign status + recent history")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--slug <slug>", "Campaign slug")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const s = await getCampaignStatus(pool, opts.workspace, opts.slug);
+      console.log(
+        JSON.stringify(
+          {
+            id: s.id,
+            slug: s.slug,
+            title: s.title,
+            status: s.status,
+            human_gate: s.human_gate,
+            history: s.history,
+          },
+          null,
+          2
+        )
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+const taskCmd = program.command("task").description("Task assignment");
+
+taskCmd
+  .command("assign")
+  .description("Assign a task to an agent on a campaign")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--campaign <slug>", "Campaign slug")
+  .requiredOption("--agent <slug>", "Agent slug")
+  .requiredOption("--title <title>", "Task title")
+  .option("--slug <slug>", "Optional task slug")
+  .option("--payload <json>", "Optional payload JSON", "{}")
+  .action(async (opts) => {
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = JSON.parse(opts.payload);
+    } catch {
+      console.error("--payload must be valid JSON");
+      process.exit(1);
+    }
+    const pool = createPool();
+    try {
+      const result = await assignTask(pool, {
+        workspace: opts.workspace,
+        campaign: opts.campaign,
+        agent: opts.agent,
+        title: opts.title,
+        slug: opts.slug,
+        payload,
+      });
+      console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+taskCmd
+  .command("list")
+  .description("List tasks for a campaign")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--campaign <slug>", "Campaign slug")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const rows = await listTasks(pool, opts.workspace, opts.campaign);
+      console.table(
+        rows.map((r) => ({
+          id: r.id,
+          slug: r.slug,
+          title: r.title,
+          status: r.status,
+          agent: r.agent_slug,
+          created_at: r.created_at,
+        }))
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+taskCmd
+  .command("complete")
+  .description("Mark a task done")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--id <uuid>", "Task id")
+  .option("--result <json>", "Optional result JSON", "{}")
+  .action(async (opts) => {
+    let result: Record<string, unknown> = {};
+    try {
+      result = JSON.parse(opts.result);
+    } catch {
+      console.error("--result must be valid JSON");
+      process.exit(1);
+    }
+    const pool = createPool();
+    try {
+      const row = await completeTask(pool, {
+        workspace: opts.workspace,
+        taskId: opts.id,
+        result,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+const councilCmd = program.command("council").description("Council case v1");
+
+councilCmd
+  .command("open")
+  .description("Open a council case")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--campaign <slug>", "Campaign slug")
+  .requiredOption("--topic <text>", "Case topic")
+  .requiredOption("--slug <slug>", "Case slug")
+  .option("--body <json>", "Optional case body JSON", "{}")
+  .action(async (opts) => {
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(opts.body);
+    } catch {
+      console.error("--body must be valid JSON");
+      process.exit(1);
+    }
+    const pool = createPool();
+    try {
+      const row = await openCase(pool, {
+        workspace: opts.workspace,
+        campaign: opts.campaign,
+        topic: opts.topic,
+        slug: opts.slug,
+        body,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+councilCmd
+  .command("position")
+  .description("Add a position to an open council case")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--case <slug>", "Case slug")
+  .requiredOption("--agent <slug>", "Agent slug")
+  .requiredOption("--stance <text>", "Stance label")
+  .option("--body <json>", "Position body JSON", "{}")
+  .action(async (opts) => {
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(opts.body);
+    } catch {
+      console.error("--body must be valid JSON");
+      process.exit(1);
+    }
+    const pool = createPool();
+    try {
+      const row = await addPosition(pool, {
+        workspace: opts.workspace,
+        caseSlug: opts.case,
+        agent: opts.agent,
+        stance: opts.stance,
+        body,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+councilCmd
+  .command("decide")
+  .description("Decide a council case (set verdict, status decided)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--case <slug>", "Case slug")
+  .requiredOption("--verdict <json>", "Verdict JSON")
+  .action(async (opts) => {
+    let verdict: Record<string, unknown>;
+    try {
+      verdict = JSON.parse(opts.verdict);
+    } catch {
+      console.error("--verdict must be valid JSON");
+      process.exit(1);
+      return;
+    }
+    const pool = createPool();
+    try {
+      const row = await decideCase(pool, {
+        workspace: opts.workspace,
+        caseSlug: opts.case,
+        verdict,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+const creativeCmd = program.command("creative").description("Creative human gate");
+
+creativeCmd
+  .command("approve")
+  .description("Approve a creative (human taste gate)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--slug <slug>", "Creative slug")
+  .option("--reason <text>", "Optional reason")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const row = await approveCreative(pool, {
+        workspace: opts.workspace,
+        slug: opts.slug,
+        reason: opts.reason,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+creativeCmd
+  .command("kill")
+  .description("Kill a creative (sterile/taste reason required)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--slug <slug>", "Creative slug")
+  .requiredOption("--reason <text>", "Kill reason (sterile/taste)")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const row = await killCreative(pool, {
+        workspace: opts.workspace,
+        slug: opts.slug,
+        reason: opts.reason,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
 program
   .command("dry-run")
   .description("Print the Phase 0 dry-run path")
@@ -131,9 +456,10 @@ program
     console.log("  NEXUS_ALLOW_SPEND=" + (process.env.NEXUS_ALLOW_SPEND ?? "false"));
     console.log("");
     console.log("  Example:");
-    console.log('    pnpm nexus campaign create --workspace frh --slug demo-gf --title "Demo GF"');
+    console.log(
+      '    pnpm nexus campaign create --workspace frh --slug demo-gf --title "Demo GF"'
+    );
   });
-
 
 const routerCmd = program.command("router").description("Model router commands");
 
