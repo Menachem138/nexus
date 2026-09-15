@@ -1,4 +1,4 @@
-# NEXUS Phase 0+1 (Week 2: Campaign loop)
+# NEXUS Phase 0+1 (Week 3: FRH E2E dry-run)
 
 **English** | [Hebrew](#hebrew)
 
@@ -7,6 +7,7 @@ Multi-agent campaign orchestration scaffold.
 - **Phase 0**: schema + seed + dry-run CLI — **brief -> blackboard -> human gate**, with **no spend**.
 - **Phase 1 (Week 1)**: Model Router (Cheap First ladder) + agent invoke + handoff validator + Context Engine v0.
 - **Phase 1 (Week 2)**: Campaign status state machine + tasks + council cases + creative human gate.
+- **Phase 1 (Week 3)**: FRH E2E dry-run on GF (dual-run) + CSV → `performance_daily` + learnings with decay.
 
 Cloud Agents / Cursor Pro are **not required**.
 
@@ -116,6 +117,46 @@ npm run nexus -- creative kill --workspace frh --slug GF-tomber-typo-poster-v1 -
 
 Tables added in `migrations/003_phase1_campaign_loop.sql`: `campaign_status_history`, `council_positions`, `creative_gate_actions` (+ campaigns.status check).
 
+
+
+## Phase 1 Week 3 — FRH E2E dry-run
+
+Goals (no paid spend):
+
+1. Run FRH workflow on **GF** via stub agents
+2. Dual-run: seed specialists (`stratege-creative`, `art-director`) vs NEXUS directors (`strategy`, `creative`) on the same brief
+3. Ingest performance via CSV stub → `performance_daily`
+4. Write learnings into `insights` with epistemic + decay fields
+
+Tables added in `migrations/004_phase1_e2e.sql`: `performance_daily`.
+
+Sample CSV: `fixtures/performance_stub_gf.csv`.
+
+### CLI examples (Week 3)
+
+```bash
+npm run nexus -- frh dry-run --workspace frh --market GF --slug e2e-gf-1
+npm run nexus -- performance ingest --workspace frh --file fixtures/performance_stub_gf.csv
+npm run nexus -- learnings from-performance --workspace frh --market GF
+```
+
+### Menager isolate (local .env only)
+
+Committed `docker-compose.yml` keeps host port **5432**. On the Menager Mac isolate (`/Users/menachem/nexus-frh-menager`) override locally — do **not** commit port changes:
+
+```bash
+# local .env (not committed)
+DATABASE_URL=postgres://nexus:nexus@localhost:5433/nexus
+```
+
+```bash
+cd /Users/menachem/nexus-frh-menager
+git pull
+npm install
+npm run migrate
+npm run nexus -- frh dry-run --workspace frh --market GF --slug e2e-gf-1
+```
+
 ## Smoke / tests
 
 ```bash
@@ -134,9 +175,9 @@ Market code **GP** = Guadeloupe (not Grand Public).
 ## What is included
 
 - Schema: workspaces, agents, markets, blackboards, campaigns, tasks, events, audit, creatives, insights
-- Phase 1 tables: `model_invocations`, `agent_handoffs`, `campaign_status_history`, `council_positions`, `creative_gate_actions`
+- Phase 1 tables: `model_invocations`, `agent_handoffs`, `campaign_status_history`, `council_positions`, `creative_gate_actions`, `performance_daily`
 - Seed: core+frh workspaces, directors (managers-astra6), dual-run specialists (cheap-first), markets GP/MQ/GF/RE/CORSE
-- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate
+- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate, frh dry-run, performance ingest, learnings from-performance
 
 ---
 
@@ -172,4 +213,12 @@ npm run nexus -- campaign status --workspace frh --slug demo-gf
 npm run nexus -- council open --workspace frh --campaign demo-gf --topic "CPL spike" --slug cpl-spike-1
 ```
 
-Keep `NEXUS_ALLOW_SPEND=false`. Do not push `.env`. GP = Guadeloupe.
+### Phase 1 Week 3 demo
+
+```bash
+npm run nexus -- frh dry-run --workspace frh --market GF --slug e2e-gf-1
+npm run nexus -- performance ingest --workspace frh --file fixtures/performance_stub_gf.csv
+npm run nexus -- learnings from-performance --workspace frh --market GF
+```
+
+Keep `NEXUS_ALLOW_SPEND=false`. Do not push `.env`. GP = Guadeloupe. Menager isolate may use port **5433** via local `.env` only (repo compose stays 5432).

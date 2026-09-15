@@ -1,0 +1,6 @@
+date,market_code,campaign_slug,creative_slug,spend,impressions,clicks,leads,qualified_leads,cpl,ql_cpl
+2026-09-01,GF,e2e-gf-1,,85.00,12000,240,10,3,8.50,28.3333
+2026-09-02,GF,e2e-gf-1,,92.50,13500,255,9,2,10.2778,46.2500
+2026-09-03,GF,e2e-gf-1,GF-tomber-typo-poster-v1,110.00,9800,180,4,0,27.5000,
+2026-09-04,GF,e2e-gf-1,,75.25,14200,310,14,5,5.3750,15.0500
+2026-09-05,GF,e2e-gf-1,,68.00,15100,330,16,6,4.2500,11.3333

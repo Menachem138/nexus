@@ -79,6 +79,7 @@ async function migrateDown() {
       await client.query("BEGIN");
       await client.query(`
         DROP TABLE IF EXISTS
+          performance_daily,
           creative_gate_actions,
           council_positions,
           campaign_status_history,

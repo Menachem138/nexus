@@ -18,6 +18,11 @@ import {
   approveCreative,
   killCreative,
 } from "../campaign/index.js";
+import {
+  runFrhDryRun,
+  ingestPerformanceCsv,
+  learningsFromPerformance,
+} from "../frh/index.js";
 
 dotenv.config();
 
@@ -25,8 +30,8 @@ const program = new Command();
 
 program
   .name("nexus")
-  .description("NEXUS Phase 0+1 CLI - dry-run + model router + campaign loop")
-  .version("0.3.0");
+  .description("NEXUS Phase 0+1 CLI - dry-run + model router + campaign loop + FRH E2E")
+  .version("0.4.0");
 
 const campaign = program.command("campaign").description("Campaign commands");
 
@@ -587,6 +592,111 @@ handoffCmd
       )
     );
     if (!result.valid) process.exitCode = 1;
+  });
+
+
+const frhCmd = program.command("frh").description("FRH E2E workflow (Week 3)");
+
+frhCmd
+  .command("dry-run")
+  .description("Run FRH workflow on a market without paid spend (dual-run stubs)")
+  .requiredOption("--workspace <slug>", "Workspace slug", "frh")
+  .requiredOption("--market <code>", "Market code", "GF")
+  .requiredOption("--slug <slug>", "Campaign slug", "e2e-gf-1")
+  .action(async (opts) => {
+    console.log("dry-run gate: NEXUS_ALLOW_SPEND=" + (process.env.NEXUS_ALLOW_SPEND ?? "false"));
+    console.log(`NEXUS_MODEL_MODE=${getModelMode()} (stub never calls external APIs)`);
+    const pool = createPool();
+    try {
+      const result = await runFrhDryRun(pool, {
+        workspace: opts.workspace,
+        market: opts.market,
+        slug: opts.slug,
+      });
+      console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+const performanceCmd = program
+  .command("performance")
+  .description("Performance ingest (CSV stub → performance_daily)");
+
+performanceCmd
+  .command("ingest")
+  .description("Parse CSV stub and insert performance_daily rows")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--file <path>", "CSV file path")
+  .option("--source <text>", "Source label", "csv_stub")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const result = await ingestPerformanceCsv(pool, {
+        workspace: opts.workspace,
+        file: opts.file,
+        source: opts.source,
+      });
+      console.log(
+        JSON.stringify(
+          {
+            ok: true,
+            workspace_id: result.workspaceId,
+            file: result.file,
+            inserted: result.inserted,
+            updated: result.updated,
+            skipped: result.skipped,
+            row_count: result.rows.length,
+          },
+          null,
+          2
+        )
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+const learningsCmd = program.command("learnings").description("Insight learnings");
+
+learningsCmd
+  .command("from-performance")
+  .description("Write insights with decay fields from performance + kills")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--market <code>", "Market code")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const result = await learningsFromPerformance(pool, {
+        workspace: opts.workspace,
+        market: opts.market,
+      });
+      console.log(
+        JSON.stringify(
+          {
+            ok: true,
+            workspace_id: result.workspaceId,
+            market: result.market,
+            from_performance: result.fromPerformance,
+            from_kills: result.fromKills,
+            insights: result.insights.map((i) => ({
+              id: i.id,
+              slug: i.slug,
+              title: i.title,
+              epistemic_class: i.epistemic_class,
+              evidence_class: i.evidence_class,
+              confidence: i.confidence,
+              decay_halflife_days: i.decay_halflife_days,
+              decay_score: i.decay_score,
+            })),
+          },
+          null,
+          2
+        )
+      );
+    } finally {
+      await pool.end();
+    }
   });
 
 program.parseAsync(process.argv).catch((e) => {
