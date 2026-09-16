@@ -1,7 +1,7 @@
 {
   "name": "nexus",
-  "version": "0.4.0",
-  "description": "NEXUS Phase 0+1 \u2014 multi-agent campaign orchestration + model router + campaign loop + FRH E2E dry-run",
+  "version": "0.5.0",
+  "description": "NEXUS Phase 0+1 \u2014 multi-agent campaign orchestration + model router + campaign loop + FRH E2E + harden/Phase 1 exit",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,7 +16,7 @@
     "seed": "tsx src/seed/seed.ts",
     "cli": "tsx src/cli/index.ts",
     "nexus": "tsx src/cli/index.ts",
-    "test": "tsx --test tests/scaffold.test.ts tests/router.test.ts tests/campaign.test.ts tests/e2e.test.ts",
+    "test": "tsx --test tests/scaffold.test.ts tests/router.test.ts tests/campaign.test.ts tests/e2e.test.ts tests/harden.test.ts",
     "smoke": "bash scripts/smoke.sh",
     "typecheck": "tsc --noEmit"
   },

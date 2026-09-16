@@ -23,6 +23,15 @@ import {
   ingestPerformanceCsv,
   learningsFromPerformance,
 } from "../frh/index.js";
+import {
+  assertWorkspaceIsolation,
+  runAuditCompleteness,
+  buildDailyDigest,
+  listDualRunAgents,
+  scheduleRetire,
+  runPhase1Checklist,
+  formatChecklist,
+} from "../harden/index.js";
 
 dotenv.config();
 
@@ -30,8 +39,8 @@ const program = new Command();
 
 program
   .name("nexus")
-  .description("NEXUS Phase 0+1 CLI - dry-run + model router + campaign loop + FRH E2E")
-  .version("0.4.0");
+  .description("NEXUS Phase 0+1 CLI - dry-run + router + campaign loop + FRH E2E + harden")
+  .version("0.5.0");
 
 const campaign = program.command("campaign").description("Campaign commands");
 
@@ -698,6 +707,166 @@ learningsCmd
       await pool.end();
     }
   });
+
+
+const hardenCmd = program.command("harden").description("Phase 1 Week 4 harden jobs");
+
+hardenCmd
+  .command("isolation")
+  .description("Assert FRH data never leaks under core workspace filter")
+  .requiredOption("--workspace <slug>", "Workspace slug (e.g. frh)", "frh")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      // Isolation always compares core vs frh regardless of --workspace hint
+      const report = await assertWorkspaceIsolation(pool, { throwOnFail: false });
+      console.log(
+        JSON.stringify(
+          {
+            ok: report.ok,
+            message: report.message,
+            core_workspace_id: report.coreWorkspaceId,
+            frh_workspace_id: report.frhWorkspaceId,
+            requested_workspace: opts.workspace,
+            checks: report.checks.map((c) => ({
+              table: c.table,
+              frh_rows: c.frhOnlyExpected,
+              core_filtered: c.coreFilteredCount,
+              leaked: c.leakedIds.length,
+              ok: c.ok,
+            })),
+          },
+          null,
+          2
+        )
+      );
+      if (!report.ok) process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
+  });
+
+hardenCmd
+  .command("audit")
+  .description("Audit completeness: transitions / gates / council vs audit_log")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .option("--days <n>", "Lookback days", (v) => parseInt(v, 10), 7)
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const report = await runAuditCompleteness(pool, {
+        workspace: opts.workspace,
+        days: opts.days,
+      });
+      console.log(JSON.stringify(report, null, 2));
+      if (!report.ok) process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
+  });
+
+const digestCmd = program.command("digest").description("Chairman digests");
+
+digestCmd
+  .command("daily")
+  .description("Hebrew (+ EN) daily digest for a workspace")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .option("--date <YYYY-MM-DD>", "Digest date (default: yesterday UTC)")
+  .option("--no-persist", "Do not write digest_runs")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const result = await buildDailyDigest(pool, {
+        workspace: opts.workspace,
+        date: opts.date,
+        persist: opts.persist,
+        includeEn: true,
+      });
+      console.log(result.bodyHe);
+      console.log("---");
+      console.log(result.bodyEn);
+      console.log(
+        JSON.stringify(
+          {
+            ok: true,
+            digest_date: result.digestDate,
+            digest_run_id: result.digestRunId ?? null,
+            payload: result.payload,
+          },
+          null,
+          2
+        )
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+const absorbCmd = program.command("absorb").description("Seed agent absorb plan");
+
+absorbCmd
+  .command("status")
+  .description("List dual_run agents + absorb plan rows")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const rows = await listDualRunAgents(pool, opts.workspace);
+      console.table(
+        rows.map((r) => ({
+          slug: r.agent_slug,
+          seed_source: r.seed_source,
+          dual_run: r.dual_run,
+          status: r.status,
+          retire_after: r.retire_after,
+        }))
+      );
+      console.log(JSON.stringify({ ok: true, count: rows.length, rows }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+absorbCmd
+  .command("schedule-retire")
+  .description("Schedule retire for a dual_run seed agent")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .requiredOption("--slug <slug>", "Agent slug")
+  .requiredOption("--after <YYYY-MM-DD>", "Retire after date")
+  .option("--notes <text>", "Optional notes")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const row = await scheduleRetire(pool, {
+        workspace: opts.workspace,
+        slug: opts.slug,
+        after: opts.after,
+        notes: opts.notes,
+      });
+      console.log(JSON.stringify({ ok: true, ...row }, null, 2));
+    } finally {
+      await pool.end();
+    }
+  });
+
+const phase1Cmd = program.command("phase1").description("Phase 1 exit helpers");
+
+phase1Cmd
+  .command("checklist")
+  .description("Print Phase 1 acceptance checklist (read-only)")
+  .requiredOption("--workspace <slug>", "Workspace slug")
+  .action(async (opts) => {
+    const pool = createPool();
+    try {
+      const report = await runPhase1Checklist(pool, { workspace: opts.workspace });
+      console.log(formatChecklist(report));
+      console.log(JSON.stringify({ ok: report.ok, passed: report.passed, failed: report.failed }, null, 2));
+      if (!report.ok) process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
+  });
+
 
 program.parseAsync(process.argv).catch((e) => {
   console.error(e instanceof Error ? e.message : e);

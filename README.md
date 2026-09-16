@@ -1,4 +1,4 @@
-# NEXUS Phase 0+1 (Week 3: FRH E2E dry-run)
+# NEXUS Phase 0+1 (Week 4: Harden + Phase 1 exit)
 
 **English** | [Hebrew](#hebrew)
 
@@ -8,6 +8,7 @@ Multi-agent campaign orchestration scaffold.
 - **Phase 1 (Week 1)**: Model Router (Cheap First ladder) + agent invoke + handoff validator + Context Engine v0.
 - **Phase 1 (Week 2)**: Campaign status state machine + tasks + council cases + creative human gate.
 - **Phase 1 (Week 3)**: FRH E2E dry-run on GF (dual-run) + CSV → `performance_daily` + learnings with decay.
+- **Phase 1 (Week 4)**: Workspace isolation + audit completeness + Hebrew digest + absorb/retire plan + Phase 1 acceptance checklist.
 
 Cloud Agents / Cursor Pro are **not required**.
 
@@ -157,6 +158,52 @@ npm run migrate
 npm run nexus -- frh dry-run --workspace frh --market GF --slug e2e-gf-1
 ```
 
+
+
+## Phase 1 Week 4 — Harden + Phase 1 exit
+
+Goals:
+
+1. **Isolation** — FRH tenant rows never return under a `core` workspace filter
+2. **Audit completeness** — recent campaign transitions / creative gates / council decides have matching `audit_log` rows
+3. **Hebrew daily digest** — prototype chairman digest (HE + EN) from yesterday/today activity
+4. **Absorb plan** — mark seed agents `dual_run`; schedule retire dates
+5. **Phase 1 acceptance** — read-only checklist against PRD §9
+
+Tables added in `migrations/005_phase1_harden.sql`: `agent_absorb_plan`, `digest_runs`.
+
+### CLI examples (Week 4)
+
+```bash
+npm run nexus -- harden isolation --workspace frh
+npm run nexus -- harden audit --workspace frh --days 7
+npm run nexus -- digest daily --workspace frh
+npm run nexus -- digest daily --workspace frh --date 2026-09-15
+npm run nexus -- absorb status --workspace frh
+npm run nexus -- absorb schedule-retire --workspace frh --slug art-director --after 2026-10-15
+npm run nexus -- phase1 checklist --workspace frh
+```
+
+### Phase 1 exit note
+
+When `phase1 checklist` is green (all PRD §9 signals + router/campaign/e2e tables), Phase 1 MVP Core Brain is ready to exit. Keep `NEXUS_ALLOW_SPEND=false` until Phase 3 spend gates. Dual-run seed agents remain until their `retire_after` date; directors stay on `managers-astra6`.
+
+### Menager isolate (Week 4)
+
+```bash
+cd /Users/menachem/nexus-frh-menager
+git pull
+npm install
+npm run migrate
+npm run nexus -- harden isolation --workspace frh
+npm run nexus -- harden audit --workspace frh
+npm run nexus -- digest daily --workspace frh
+npm run nexus -- absorb status --workspace frh
+npm run nexus -- phase1 checklist --workspace frh
+```
+
+Local `.env` may keep port **5433**; committed compose stays **5432**.
+
 ## Smoke / tests
 
 ```bash
@@ -175,9 +222,9 @@ Market code **GP** = Guadeloupe (not Grand Public).
 ## What is included
 
 - Schema: workspaces, agents, markets, blackboards, campaigns, tasks, events, audit, creatives, insights
-- Phase 1 tables: `model_invocations`, `agent_handoffs`, `campaign_status_history`, `council_positions`, `creative_gate_actions`, `performance_daily`
+- Phase 1 tables: `model_invocations`, `agent_handoffs`, `campaign_status_history`, `council_positions`, `creative_gate_actions`, `performance_daily`, `agent_absorb_plan`, `digest_runs`
 - Seed: core+frh workspaces, directors (managers-astra6), dual-run specialists (cheap-first), markets GP/MQ/GF/RE/CORSE
-- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate, frh dry-run, performance ingest, learnings from-performance
+- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate, frh dry-run, performance ingest, learnings from-performance, harden isolation/audit, digest daily, absorb status/schedule-retire, phase1 checklist
 
 ---
 
@@ -219,6 +266,15 @@ npm run nexus -- council open --workspace frh --campaign demo-gf --topic "CPL sp
 npm run nexus -- frh dry-run --workspace frh --market GF --slug e2e-gf-1
 npm run nexus -- performance ingest --workspace frh --file fixtures/performance_stub_gf.csv
 npm run nexus -- learnings from-performance --workspace frh --market GF
+```
+
+
+### Phase 1 Week 4 demo
+
+```bash
+npm run nexus -- harden isolation --workspace frh
+npm run nexus -- digest daily --workspace frh
+npm run nexus -- phase1 checklist --workspace frh
 ```
 
 Keep `NEXUS_ALLOW_SPEND=false`. Do not push `.env`. GP = Guadeloupe. Menager isolate may use port **5433** via local `.env` only (repo compose stays 5432).
