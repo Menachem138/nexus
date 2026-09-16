@@ -1,5 +1,9 @@
 
 import { createPool } from "../db/client.js";
+import {
+  upsertFrhCreativeDnaDemo,
+  countCreativeDnaAssets,
+} from "./creativeDnaDemo.js";
 
 async function seed() {
   const pool = createPool();
@@ -134,49 +138,14 @@ async function seed() {
       [wsId.frh]
     );
 
-    const gf = (
-      await client.query(
-        `SELECT id FROM markets WHERE workspace_id = $1 AND code = 'GF'`,
-        [wsId.frh]
-      )
-    ).rows[0].id;
-
-    const creative = await client.query(
-      `INSERT INTO creatives (
-         workspace_id, market_id, slug, title, status,
-         sterile_flags, ai_qa_status, human_taste, asset_meta
-       ) VALUES (
-         $1, $2, 'GF-tomber-typo-poster-v1', 'GF Tomber Typo Poster v1', 'killed',
-         '["sterile_black_header","generic_panel_macro"]'::jsonb,
-         'PASS',
-         'reject',
-         '{"lesson":"AI QA PASS != human taste","format":"poster"}'::jsonb
-       )
-       ON CONFLICT (workspace_id, slug) DO UPDATE
-         SET status = 'killed',
-             sterile_flags = EXCLUDED.sterile_flags,
-             ai_qa_status = EXCLUDED.ai_qa_status,
-             human_taste = EXCLUDED.human_taste
-       RETURNING id`,
-      [wsId.frh, gf]
+    // Phase 1: ≥3 creatives with creative_dna (GF killed + GP UGC + RE clim)
+    const creativeIds = await upsertFrhCreativeDnaDemo(client, wsId.frh);
+    const dnaCount = await countCreativeDnaAssets(client, wsId.frh);
+    console.log(
+      `creative DNA demos: ${Object.keys(creativeIds).join(", ")} (count=${dnaCount})`
     );
 
-    await client.query(`DELETE FROM creative_dna WHERE creative_id = $1`, [creative.rows[0].id]);
-    await client.query(
-      `INSERT INTO creative_dna (workspace_id, creative_id, dna)
-       VALUES ($1, $2, $3::jsonb)`,
-      [
-        wsId.frh,
-        creative.rows[0].id,
-        JSON.stringify({
-          layout: "poster",
-          header: "sterile_black",
-          panel: "generic_macro",
-          typography: "tomber",
-        }),
-      ]
-    );
-
+    const killedId = creativeIds["GF-tomber-typo-poster-v1"];
     await client.query(
       `DELETE FROM insights WHERE workspace_id = $1 AND slug = 'gf-sterile-header-lesson'`,
       [wsId.frh]
@@ -195,7 +164,7 @@ async function seed() {
          '["sterile_flags","human_taste","gf","poster"]'::jsonb,
          '{"ai_qa":"PASS","human":"reject","sterile_flags":["sterile_black_header","generic_panel_macro"]}'::jsonb
        )`,
-      [wsId.frh, creative.rows[0].id]
+      [wsId.frh, killedId]
     );
     console.log("learning fixture: GF-tomber-typo-poster-v1 killed + insight");
 

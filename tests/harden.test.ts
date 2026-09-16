@@ -243,3 +243,39 @@ describe("absorb schedule (mocked pool)", () => {
     assert.equal(state.plan?.status, "retire_scheduled");
   });
 });
+
+describe("Creative DNA demo seed (≥3 assets)", () => {
+  it("exports ≥3 distinct FRH DNA demos with required fields", async () => {
+    const mod = await import("../src/seed/creativeDnaDemo.js");
+    const demos = mod.FRH_DNA_DEMO_CREATIVES;
+    assert.ok(demos.length >= 3);
+    const required = [
+      "market",
+      "audience",
+      "awareness",
+      "emotion",
+      "angle",
+      "hook_type",
+      "visual_style",
+      "proof",
+      "offer",
+      "cta",
+      "format",
+      "hypothesis",
+    ];
+    const slugs = new Set(demos.map((d: { slug: string }) => d.slug));
+    assert.equal(slugs.size, demos.length);
+    assert.ok(demos.some((d: { status: string }) => d.status === "killed"));
+    for (const d of demos) {
+      for (const k of required) {
+        assert.ok(
+          typeof (d.dna as Record<string, unknown>)[k] === "string" &&
+            String((d.dna as Record<string, unknown>)[k]).length > 0,
+          `${d.slug} missing dna.${k}`
+        );
+      }
+    }
+    assert.equal(typeof mod.upsertFrhCreativeDnaDemo, "function");
+    assert.equal(typeof mod.countCreativeDnaAssets, "function");
+  });
+});

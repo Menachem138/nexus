@@ -32,6 +32,11 @@ import {
   runPhase1Checklist,
   formatChecklist,
 } from "../harden/index.js";
+import {
+  upsertFrhCreativeDnaDemo,
+  countCreativeDnaAssets,
+  FRH_DNA_DEMO_CREATIVES,
+} from "../seed/creativeDnaDemo.js";
 
 dotenv.config();
 
@@ -845,6 +850,52 @@ absorbCmd
       });
       console.log(JSON.stringify({ ok: true, ...row }, null, 2));
     } finally {
+      await pool.end();
+    }
+  });
+
+
+const dnaCmd = program.command("dna").description("Creative DNA helpers");
+
+dnaCmd
+  .command("seed-demo")
+  .description("Upsert ≥3 FRH Creative DNA demo assets (idempotent)")
+  .requiredOption("--workspace <slug>", "Workspace slug (use frh)")
+  .action(async (opts) => {
+    const pool = createPool();
+    const client = await pool.connect();
+    try {
+      if (opts.workspace !== "frh") {
+        throw new Error("dna seed-demo currently supports --workspace frh only");
+      }
+      await client.query("BEGIN");
+      const ws = await client.query<{ id: string }>(
+        `SELECT id FROM workspaces WHERE slug = $1 AND deleted_at IS NULL`,
+        [opts.workspace]
+      );
+      if (!ws.rows[0]) throw new Error(`workspace not found: ${opts.workspace}`);
+      const ids = await upsertFrhCreativeDnaDemo(client, ws.rows[0].id);
+      const n = await countCreativeDnaAssets(client, ws.rows[0].id);
+      await client.query("COMMIT");
+      console.log(
+        JSON.stringify(
+          {
+            ok: n >= 3,
+            workspace: opts.workspace,
+            upserted: Object.keys(ids),
+            demos: FRH_DNA_DEMO_CREATIVES.map((d) => d.slug),
+            creative_dna_count: n,
+          },
+          null,
+          2
+        )
+      );
+      if (n < 3) process.exitCode = 1;
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
       await pool.end();
     }
   });

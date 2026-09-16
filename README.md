@@ -181,12 +181,13 @@ npm run nexus -- digest daily --workspace frh
 npm run nexus -- digest daily --workspace frh --date 2026-09-15
 npm run nexus -- absorb status --workspace frh
 npm run nexus -- absorb schedule-retire --workspace frh --slug art-director --after 2026-10-15
+npm run nexus -- dna seed-demo --workspace frh
 npm run nexus -- phase1 checklist --workspace frh
 ```
 
 ### Phase 1 exit note
 
-When `phase1 checklist` is green (all PRD §9 signals + router/campaign/e2e tables), Phase 1 MVP Core Brain is ready to exit. Keep `NEXUS_ALLOW_SPEND=false` until Phase 3 spend gates. Dual-run seed agents remain until their `retire_after` date; directors stay on `managers-astra6`.
+When `phase1 checklist` is green (all PRD §9 signals + router/campaign/e2e tables), Phase 1 MVP Core Brain is ready to exit. Keep `NEXUS_ALLOW_SPEND=false` until Phase 3 spend gates. Dual-run seed agents remain until their `retire_after` date; directors stay on `managers-astra6`. **Creative DNA:** seed (or `npm run nexus -- dna seed-demo --workspace frh`) ensures ≥3 FRH assets with DNA including ≥1 killed example.
 
 ### Menager isolate (Week 4)
 
@@ -223,8 +224,8 @@ Market code **GP** = Guadeloupe (not Grand Public).
 
 - Schema: workspaces, agents, markets, blackboards, campaigns, tasks, events, audit, creatives, insights
 - Phase 1 tables: `model_invocations`, `agent_handoffs`, `campaign_status_history`, `council_positions`, `creative_gate_actions`, `performance_daily`, `agent_absorb_plan`, `digest_runs`
-- Seed: core+frh workspaces, directors (managers-astra6), dual-run specialists (cheap-first), markets GP/MQ/GF/RE/CORSE
-- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate, frh dry-run, performance ingest, learnings from-performance, harden isolation/audit, digest daily, absorb status/schedule-retire, phase1 checklist
+- Seed: core+frh workspaces, directors (managers-astra6), dual-run specialists (cheap-first), markets GP/MQ/GF/RE/CORSE, ≥3 FRH creatives with `creative_dna` (incl. killed GF poster)
+- CLI: campaign create/list/transition/status, task assign/list, council open/position/decide, creative approve/kill, dry-run, router explain, agent invoke, handoff validate, frh dry-run, performance ingest, learnings from-performance, harden isolation/audit, digest daily, absorb status/schedule-retire, dna seed-demo, phase1 checklist
 
 ---
 
